@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>單機版影音學習平台 - AI 升級版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- 引入讀取 Excel 的函式庫 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- 修正：更換為穩定版本的 PDF.js 函式庫 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            background-color: #f0f2f5;
+        }
+        .main-container {
+            display: flex;
+            height: 100vh;
+        }
+        .sidebar {
+            width: 240px;
+            background-color: #ffffff;
+            border-right: 1px solid #e5e7eb;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem 1rem;
+        }
+        .content-area {
+            flex-grow: 1;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+        .sidebar-link {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            color: #374151;
+            font-weight: 500;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .sidebar-link:hover {
+            background-color: #f3f4f6;
+        }
+        .sidebar-link.active {
+            background-color: #4f46e5;
+            color: #ffffff;
+        }
+        .sidebar-link svg {
+            margin-right: 0.75rem;
+        }
+        .card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: transform 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .login-tab, .learning-tab {
+            border-bottom: 2px solid transparent;
+            padding-bottom: 0.5rem;
+            cursor: pointer;
+        }
+        .login-tab.active, .learning-tab.active {
+            border-bottom-color: #4f46e5;
+            color: #4f46e5;
+            font-weight: 600;
+        }
+        .learning-tab.disabled {
+            color: #9ca3af;
+            cursor: not-allowed;
+            border-bottom-color: transparent;
+        }
+        details > summary {
+            list-style: none;
+        }
+        details > summary::-webkit-details-marker {
+            display: none;
+        }
+        #pdf-viewer-container {
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        #pdf-canvas {
+            width: 100%;
+            height: auto;
+        }
+        #pdf-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0.5rem;
+            background-color: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+        }
+        /* AI Chat Styles */
+        #chat-button {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 1000;
+        }
+        #chat-window {
+            position: fixed;
+            bottom: 6rem;
+            right: 2rem;
+            width: 400px;
+            height: 500px;
+            z-index: 1000;
+            transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            transform: translateY(20px);
+            opacity: 0;
+            pointer-events: none;
+        }
+        #chat-window.open {
+            transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .chat-message {
+            padding: 0.75rem 1rem;
+            border-radius: 0.75rem;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .chat-message.user {
+            background-color: #4f46e5;
+            color: white;
+            align-self: flex-end;
+        }
+        .chat-message.assistant {
+            background-color: #e5e7eb;
+            color: #1f2937;
+            align-self: flex-start;
+        }
+        .dot-flashing {
+            position: relative;
+            width: 10px;
+            height: 10px;
+            border-radius: 5px;
+            background-color: #4f46e5;
+            color: #4f46e5;
+            animation: dotFlashing 1s infinite linear alternate;
+            animation-delay: .5s;
+        }
+        .dot-flashing::before, .dot-flashing::after {
+            content: '';
+            display: inline-block;
+            position: absolute;
+            top: 0;
+        }
+        .dot-flashing::before {
+            left: -15px;
+            width: 10px;
+            height: 10px;
+            border-radius: 5px;
+            background-color: #4f46e5;
+            color: #4f46e5;
+            animation: dotFlashing 1s infinite alternate;
+            animation-delay: 0s;
+        }
+        .dot-flashing::after {
+            left: 15px;
+            width: 10px;
+            height: 10px;
+            border-radius: 5px;
+            background-color: #4f46e5;
+            color: #4f46e5;
+            animation: dotFlashing 1s infinite alternate;
+            animation-delay: 1s;
+        }
+        @keyframes dotFlashing {
+            0% { background-color: #4f46e5; }
+            50%, 100% { background-color: rgba(79, 70, 229, 0.2); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 主應用程式容器 -->
+    <div id="app-container" class="w-full h-screen font-sans">
+
+        <!-- 登入畫面 -->
+        <div id="login-view" class="flex items-center justify-center w-full h-full bg-gray-100">
+            <div class="w-full max-w-md p-8 bg-white rounded-xl shadow-lg">
+                <h2 class="text-3xl font-bold text-center text-gray-900">學習平台</h2>
+                
+                <div class="flex justify-around my-6 border-b">
+                    <button id="user-tab-btn" onclick="showLoginTab('user')" class="login-tab active w-1/2">學員登入</button>
+                    <button id="admin-tab-btn" onclick="showLoginTab('admin')" class="login-tab w-1/2">管理者登入</button>
+                </div>
+
+                <form id="user-login-form" class="space-y-6" onsubmit="handleUserLogin(event)">
+                    <div>
+                        <label for="user-code" class="text-sm font-medium text-gray-700">學員代碼</label>
+                        <input id="user-code" name="user-code" type="text" required class="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" placeholder="請輸入 4 位數學員代碼" pattern="\d{4}" maxlength="4" title="請輸入 4 位數字代碼">
+                    </div>
+                    <div>
+                        <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">學員登入</button>
+                    </div>
+                </form>
+
+                <form id="admin-login-form" class="hidden space-y-6" onsubmit="handleAdminLogin(event)">
+                    <div>
+                        <label for="admin-username" class="text-sm font-medium text-gray-700">管理者帳號</label>
+                        <input id="admin-username" name="username" type="text" required class="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label for="admin-password" class="text-sm font-medium text-gray-700">密碼</label>
+                        <input id="admin-password" name="password" type="password" autocomplete="current-password" required class="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-gray-800 hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-700">管理者登入</button>
+                    </div>
+                </form>
+                <p id="login-error" class="text-red-500 text-center mt-4 hidden"></p>
+            </div>
+        </div>
+
+        <!-- 主畫面 (登入後顯示) -->
+        <div id="main-view" class="hidden main-container">
+            <aside class="sidebar">
+                <div class="flex items-center mb-8">
+                    <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center mr-3">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <h1 class="text-xl font-bold text-gray-800">學習平台</h1>
+                </div>
+
+                <div id="role-switcher-container" class="mb-6 hidden">
+                    <label for="role-switcher" class="text-sm font-medium text-gray-600">切換身份</label>
+                    <select id="role-switcher" onchange="switchRole(this.value)" class="w-full mt-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="user">使用者</option>
+                        <option value="admin">管理者</option>
+                    </select>
+                </div>
+
+                <nav id="user-nav" class="space-y-2">
+                     <a href="#" onclick="showView('user-courses-view')" class="sidebar-link active">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                        我的課程
+                    </a>
+                </nav>
+
+                <nav id="admin-nav" class="hidden space-y-2">
+                    <a href="#" onclick="showAdminView('admin-dashboard-view')" class="sidebar-link active">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                        儀表板
+                    </a>
+                    <a href="#" onclick="showAdminView('admin-courses-view')" class="sidebar-link">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        課程管理
+                    </a>
+                    <a href="#" onclick="showAdminView('admin-users-view')" class="sidebar-link">
+                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M15 21a6 6 0 00-9-5.197m0 0A5.995 5.995 0 0012 12a5.995 5.995 0 00-3-5.197M15 21a9 9 0 00-9-9"></path></svg>
+                        使用者管理
+                    </a>
+                </nav>
+                
+                <div class="mt-auto">
+                    <div id="user-profile-info" class="mb-4 p-2 text-center bg-gray-100 rounded-lg"></div>
+                    <a href="#" onclick="handleLogout()" class="sidebar-link">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                        登出
+                    </a>
+                </div>
+            </aside>
+
+            <main class="content-area">
+                <div id="user-courses-view" class="main-content-view">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-6">我的課程</h2>
+                    <div id="user-courses-grid" class="space-y-4"></div>
+                </div>
+
+                <div id="user-learning-view" class="hidden main-content-view">
+                    <div class="flex justify-between items-center mb-4">
+                         <h2 id="learning-course-title" class="text-3xl font-bold text-gray-800"></h2>
+                         <button onclick="showView('user-courses-view')" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">返回課程列表</button>
+                    </div>
+
+                    <div class="flex border-b mb-6">
+                        <button id="tab-video" onclick="showLearningTab('video')" class="learning-tab px-4 py-2">影片與簡報</button>
+                        <button id="tab-quiz" onclick="showLearningTab('quiz')" class="learning-tab px-4 py-2">課程測驗</button>
+                        <button id="tab-qa" onclick="showLearningTab('qa')" class="learning-tab px-4 py-2">常見問答</button>
+                    </div>
+
+                    <!-- 影片/簡報 內容 -->
+                    <div id="content-video" class="learning-content">
+                        <div class="flex flex-col lg:flex-row gap-8">
+                            <div class="lg:w-1/2 w-full">
+                                <div class="aspect-w-16 aspect-h-9 bg-black rounded-lg flex items-center justify-center text-white text-lg">
+                                    <video id="video-player" class="w-full h-full rounded-lg" controls></video>
+                                    <p id="no-video-message" class="hidden">沒有可用的影片</p>
+                                </div>
+                                <div class="mt-6 p-6 bg-white rounded-lg shadow-sm">
+                                    <h3 class="text-xl font-semibold mb-2">課程簡介</h3>
+                                    <p id="learning-course-description" class="text-gray-600"></p>
+                                </div>
+                            </div>
+                            <div class="lg:w-1/2 w-full flex flex-col">
+                               <div class="card flex-grow flex flex-col">
+                                    <div class="p-4 border-b flex items-center">
+                                        <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center mr-3">
+                                            <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                        </div>
+                                        <h3 class="text-lg font-semibold">課程簡報</h3>
+                                    </div>
+                                    <div id="presentation-container" class="flex-grow bg-gray-100 flex items-center justify-center rounded-b-xl min-h-0">
+                                        <div id="pdf-viewer-container" class="w-full h-full flex flex-col hidden">
+                                            <div class="flex-grow overflow-auto"><canvas id="pdf-canvas"></canvas></div>
+                                            <div id="pdf-controls">
+                                                <button id="pdf-prev" class="px-3 py-1 bg-gray-200 rounded-md mr-2">&lt;</button>
+                                                <span id="pdf-page-num"></span> / <span id="pdf-page-count"></span>
+                                                <button id="pdf-next" class="px-3 py-1 bg-gray-200 rounded-md ml-2">&gt;</button>
+                                            </div>
+                                        </div>
+                                        <p id="no-presentation-message" class="text-gray-500">沒有可用的簡報</p>
+                                    </div>
+                               </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 測驗 內容 -->
+                    <div id="content-quiz" class="hidden learning-content bg-white p-8 rounded-lg shadow-lg">
+                        <div id="quiz-container"></div>
+                    </div>
+
+                    <!-- Q&A 內容 -->
+                    <div id="content-qa" class="hidden learning-content bg-white p-8 rounded-lg shadow-lg">
+                        <div id="qa-container" class="space-y-4"></div>
+                    </div>
+                </div>
+
+                <div id="admin-dashboard-view" class="hidden main-content-view">
+                    <h2 class="text-3xl font-bold text-gray-800 mb-6">儀表板</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                        <div class="p-6 bg-white rounded-xl shadow-md flex items-center justify-between"><p>總學員數: <span id="stats-total-users"></span></p></div>
+                        <div class="p-6 bg-white rounded-xl shadow-md flex items-center justify-between"><p>總課程數: <span id="stats-total-courses"></span></p></div>
+                        <div class="p-6 bg-white rounded-xl shadow-md flex items-center justify-between"><p>平均完成率: 78%</p></div>
+                    </div>
+                </div>
+
+                <div id="admin-courses-view" class="hidden main-content-view">
+                     <div class="flex justify-between items-center mb-6">
+                         <h2 class="text-3xl font-bold text-gray-800">課程管理</h2>
+                         <button onclick="openAddCourseModal()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold">新增課程</button>
+                    </div>
+                    <div class="bg-white rounded-lg shadow overflow-hidden">
+                        <table class="min-w-full">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">課程名稱</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">狀態</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="courses-table-body" class="divide-y divide-gray-200"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="admin-users-view" class="hidden main-content-view">
+                    <div class="flex justify-between items-center mb-6">
+                         <h2 class="text-3xl font-bold text-gray-800">使用者管理</h2>
+                         <button onclick="openAddUserModal()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold">新增使用者</button>
+                    </div>
+                    <div class="bg-white rounded-lg shadow overflow-hidden">
+                        <table class="min-w-full">
+                             <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">使用者名稱</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">學員代碼</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">完成課程數</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-body" class="divide-y divide-gray-200"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+
+        <!-- 提醒 Toast -->
+        <div id="toast-notification" class="hidden fixed bottom-5 right-5 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg flex items-center transition-transform duration-500 ease-in-out transform translate-x-[calc(100%+2rem)] z-2000">
+            <svg class="w-6 h-6 text-blue-400 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <p>提醒：觀看影片後，才能解鎖課程測驗喔！</p>
+        </div>
+        
+        <!-- AI Chat Button and Window -->
+        <div id="ai-chat-container" class="hidden">
+            <button id="chat-button" onclick="toggleChat()" class="bg-indigo-600 text-white p-4 rounded-full shadow-lg hover:bg-indigo-700 transition-colors">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+            </button>
+
+            <div id="chat-window" class="bg-white rounded-xl shadow-2xl flex flex-col">
+                <div class="p-4 bg-indigo-600 text-white rounded-t-xl flex justify-between items-center">
+                    <h3 class="font-bold text-lg">AI 學習小幫手</h3>
+                    <button onclick="toggleChat()" class="text-indigo-200 hover:text-white">&times;</button>
+                </div>
+                <div id="chat-messages" class="flex-1 p-4 space-y-4 overflow-y-auto flex flex-col">
+                    <!-- Messages will be appended here -->
+                </div>
+                <div id="chat-loading" class="hidden p-4 items-center justify-center">
+                    <div class="dot-flashing"></div>
+                </div>
+                <div class="p-4 border-t">
+                    <form id="chat-form" class="flex gap-2">
+                        <input id="chat-input" type="text" placeholder="輸入您的問題..." class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-indigo-300">傳送</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增/編輯課程 Modal -->
+    <div id="course-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-3xl transform transition-all">
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="course-modal-title" class="text-2xl font-bold text-gray-800"></h3>
+                <button onclick="closeCourseModal()" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <form id="course-form" onsubmit="handleCourseSubmit(event)" class="max-h-[70vh] overflow-y-auto pr-2 space-y-6">
+                <input type="hidden" id="course-id">
+                <!-- 基本資訊 -->
+                <fieldset class="border p-4 rounded-lg">
+                    <legend class="text-lg font-semibold px-2">基本資訊</legend>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="course-title" class="block text-sm font-medium text-gray-700">課程名稱</label>
+                            <input type="text" id="course-title" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label for="course-video" class="block text-sm font-medium text-gray-700">上傳影片/音檔</label>
+                            <input type="file" id="course-video" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+                        </div>
+                        <div>
+                            <label for="course-presentation" class="block text-sm font-medium text-gray-700">上傳課程簡報 (僅限 PDF 檔)</label>
+                            <input type="file" id="course-presentation" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" accept=".pdf"/>
+                        </div>
+                        <div>
+                            <label for="course-status" class="block text-sm font-medium text-gray-700">課程狀態</label>
+                            <select id="course-status" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="草稿">草稿</option>
+                                <option value="已發佈">已發佈</option>
+                            </select>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <!-- Q&A 管理 -->
+                <fieldset class="border p-4 rounded-lg">
+                    <legend class="text-lg font-semibold px-2">Q&A 問答集管理</legend>
+                    <div id="qa-manager" class="space-y-4"></div>
+                    <div class="mt-4 space-x-2">
+                        <button type="button" onclick="addQAField()" class="px-3 py-1.5 text-sm bg-gray-200 hover:bg-gray-300 rounded-md">手動新增問答</button>
+                        <button type="button" onclick="document.getElementById('qa-excel-import').click()" class="px-3 py-1.5 text-sm bg-green-100 text-green-700 hover:bg-green-200 rounded-md">從 Excel 匯入</button>
+                        <input type="file" id="qa-excel-import" class="hidden" accept=".xlsx, .xls" onchange="handleQAExcelImport(event)">
+                    </div>
+                </fieldset>
+                
+                <!-- 測驗管理 -->
+                <fieldset class="border p-4 rounded-lg">
+                    <legend class="text-lg font-semibold px-2">測驗題目管理</legend>
+                    <div class="bg-indigo-50 p-3 rounded-lg mb-4">
+                        <label for="quiz-draw-count" class="block text-sm font-medium text-gray-800">隨機抽題設定</label>
+                        <p class="text-xs text-gray-500 mb-2">設定每次測驗要抽選幾題。如果留空，則會測驗題庫中的所有題目。</p>
+                        <input type="number" id="quiz-draw-count" min="1" placeholder="例如: 5" class="w-24 border-gray-300 rounded-md p-1.5 shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div id="quiz-manager" class="space-y-6"></div>
+                    <div class="mt-4 space-x-2">
+                        <button type="button" onclick="addQuizQuestionField()" class="px-3 py-1.5 text-sm bg-gray-200 hover:bg-gray-300 rounded-md">新增題目</button>
+                    </div>
+                </fieldset>
+
+                <div class="flex justify-end pt-4 space-x-4 sticky bottom-0 bg-white py-4 -mx-8 px-8 border-t">
+                    <button type="button" onclick="closeCourseModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">取消</button>
+                    <button id="course-submit-btn" type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold"></button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="add-user-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md transform transition-all">
+             <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold text-gray-800">新增使用者</h3>
+                <button onclick="closeAddUserModal()" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <form id="add-user-form" onsubmit="handleAddUser(event)" class="space-y-4">
+                 <div>
+                    <label for="new-username" class="block text-sm font-medium text-gray-700">使用者名稱</label>
+                    <input type="text" id="new-username" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div class="flex justify-end pt-4 space-x-4">
+                    <button type="button" onclick="closeAddUserModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">取消</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold">儲存使用者</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        // --- AI 功能設定 (非常重要！) ---
+        // 為了讓 AI 小幫手在您的電腦上也能運作，您需要一組自己的 API Key。
+        // 1. 請前往 Google AI Studio: https://aistudio.google.com/app/apikey
+        // 2. 登入您的 Google 帳號。
+        // 3. 點擊 "Create API key" 按鈕來產生一組免費的 API 金鑰。
+        // 4. 將產生的金鑰複製，並貼到下面的引號之間。
+        // 範例: const USER_API_KEY = "AIzaSy...YOUR_KEY_HERE...";
+        const USER_API_KEY = "AIzaSyBkQL8-TgWPsWU35fTAF7j6RXNOuIZNQy0"; // 
+        // --- 全域變數與 DOM 節點 ---
+        const loginView = document.getElementById('login-view');
+        const mainView = document.getElementById('main-view');
+        const roleSwitcher = document.getElementById('role-switcher');
+        const roleSwitcherContainer = document.getElementById('role-switcher-container');
+        const mainContentViews = document.querySelectorAll('.main-content-view');
+        const learningTabs = document.querySelectorAll('.learning-tab');
+        const learningContents = document.querySelectorAll('.learning-content');
+
+        const courseModal = document.getElementById('course-modal');
+        const addUserModal = document.getElementById('add-user-modal');
+        
+        const coursesTableBody = document.getElementById('courses-table-body');
+        const usersTableBody = document.getElementById('users-table-body');
+        const userCoursesGrid = document.getElementById('user-courses-grid');
+        
+        const aiChatContainer = document.getElementById('ai-chat-container');
+        const chatWindow = document.getElementById('chat-window');
+        const chatMessages = document.getElementById('chat-messages');
+        const chatForm = document.getElementById('chat-form');
+        const chatInput = document.getElementById('chat-input');
+        const chatLoading = document.getElementById('chat-loading');
+        
+        let currentUser = null;
+        let currentCourseId = null;
+        let currentQuizQuestions = [];
+
+        // --- PDF.js State ---
+        let pdfDoc = null,
+            pageNum = 1,
+            pageRendering = false,
+            pageNumPending = null;
+        const pdfCanvas = document.getElementById('pdf-canvas'),
+              pdfCtx = pdfCanvas.getContext('2d');
+        
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js';
+
+
+        // --- 模擬資料庫 ---
+        let coursesDB = [
+            { id: 1, title: 'AI 時代的專案管理', description: '學習如何運用 AI 工具提升專案效率。本課程將介紹敏捷開發、Scrum流程以及如何利用AI進行風險預測與任務自動化。', status: '已發佈', progress: 0, videoUrl: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4', presentationUrl: null, 
+              qa: [
+                  { q: '什麼是敏捷開發？', a: '敏捷開發是一種專案管理方法，強調快速迭代和客戶回饋。' },
+                  { q: 'AI 如何幫助專案管理？', a: 'AI 可以自動化任務分配、預測專案風險、並提供數據洞察。' }
+              ],
+              quiz: [
+                  { question: '下列何者不是敏捷開發的核心價值？', options: ['個人與互動', '可工作的軟體', '詳盡的文件', '回應變化'], answer: 2 },
+                  { question: 'AI 在專案管理中的主要優勢是？', options: ['取代專案經理', '提升決策效率與準確性', '減少團隊溝通', '保證專案100%成功'], answer: 1 },
+                  { question: 'Scrum 中的 "Sprint" 通常週期是多久？', options: ['一天', '一個月', '2-4 週', '一季'], answer: 2 },
+                  { question: '看板 (Kanban) 方法的主要目的是什麼？', options: ['視覺化工作流程', '指派工作給特定成員', '計算專案預算', '撰寫使用者故事'], answer: 0 }
+              ],
+              quizDrawCount: 2
+            },
+            { id: 2, title: '設計思考入門', description: '掌握以人為本的創新思考方法，包含同理心、定義、發想、原型製作與測試五個階段。', status: '已發佈', progress: 45, videoUrl: null, presentationUrl: null, qa: [], quiz: [], quizDrawCount: null },
+            { id: 3, title: '高效溝通的藝術', description: '建立正向人際關係的溝通技巧。', status: '草稿', progress: 0, videoUrl: null, presentationUrl: null, qa: [], quiz: [], quizDrawCount: null }
+        ];
+
+        let usersDB = [
+            { id: 1, name: '張小明', code: '1001', completed: 5, joinDate: '2024-01-15' },
+            { id: 2, name: '陳美麗', code: '1002', completed: 22, joinDate: '2024-02-01' },
+            { id: 3, name: '林小芳', code: '8888', completed: 10, joinDate: '2024-03-10' }
+        ];
+
+        // --- 渲染函式 ---
+        function renderAdminCoursesTable() {
+            coursesTableBody.innerHTML = '';
+            coursesDB.forEach(course => {
+                const statusBadge = course.status === '已發佈' 
+                    ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">已發佈</span>`
+                    : `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">草稿</span>`;
+                
+                coursesTableBody.innerHTML += `
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${course.title}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${statusBadge}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <a href="#" onclick="openEditCourseModal(${course.id})" class="text-indigo-600 hover:text-indigo-900">編輯</a>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        function renderAdminUsersTable() {
+            usersTableBody.innerHTML = '';
+            usersDB.forEach(user => {
+                usersTableBody.innerHTML += `
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${user.name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500">${user.code}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.completed} / ${coursesDB.filter(c=>c.status === '已發佈').length}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <a href="#" class="text-indigo-600 hover:text-indigo-900">查看進度</a>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        
+        function renderUserCourses() {
+            userCoursesGrid.innerHTML = '';
+            const publishedCourses = coursesDB.filter(c => c.status === '已發佈');
+            if (publishedCourses.length === 0) {
+                userCoursesGrid.innerHTML = `<p class="text-gray-500 col-span-full">目前沒有已發佈的課程。</p>`;
+                return;
+            }
+
+            publishedCourses.forEach(course => {
+                let progressColor = 'bg-gray-400';
+                let progressText = '未開始';
+                let progressTextColor = 'text-gray-500';
+
+                if (course.progress > 0 && course.progress < 100) {
+                    progressColor = 'bg-blue-600';
+                    progressText = `進行中 (${course.progress}%)`;
+                    progressTextColor = 'text-blue-600';
+                } else if (course.progress === 100) {
+                    progressColor = 'bg-green-600';
+                    progressText = '已結業';
+                    progressTextColor = 'text-green-600';
+                }
+
+                userCoursesGrid.innerHTML += `
+                    <div class="bg-white p-6 rounded-lg shadow-sm cursor-pointer hover:shadow-md transition-shadow" onclick="showLearningView(${course.id})">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-xl font-semibold text-gray-800">${course.title}</h3>
+                            <p class="text-sm font-medium ${progressTextColor}">${progressText}</p>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2 mt-3">
+                            <div class="${progressColor} h-2 rounded-full" style="width: ${course.progress}%"></div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        function renderDashboardStats() {
+            document.getElementById('stats-total-users').textContent = usersDB.length;
+            document.getElementById('stats-total-courses').textContent = coursesDB.length;
+        }
+
+        // --- 事件處理函式 ---
+        function showLoginTab(tabName) {
+            document.getElementById('user-login-form').classList.toggle('hidden', tabName !== 'user');
+            document.getElementById('admin-login-form').classList.toggle('hidden', tabName === 'user');
+            document.getElementById('user-tab-btn').classList.toggle('active', tabName === 'user');
+            document.getElementById('admin-tab-btn').classList.toggle('active', tabName !== 'user');
+            document.getElementById('login-error').classList.add('hidden');
+        }
+
+        function handleUserLogin(event) {
+            event.preventDefault();
+            const userCode = document.getElementById('user-code').value;
+            const foundUser = usersDB.find(u => u.code === userCode);
+            if (foundUser) {
+                currentUser = foundUser;
+                loginView.classList.add('hidden');
+                mainView.classList.remove('hidden');
+                aiChatContainer.classList.remove('hidden');
+                updateUserProfile();
+                roleSwitcherContainer.classList.add('hidden');
+                switchRole('user');
+            } else {
+                const loginError = document.getElementById('login-error');
+                loginError.textContent = '學員代碼錯誤或不存在。';
+                loginError.classList.remove('hidden');
+            }
+        }
+        
+        function handleAdminLogin(event) {
+            event.preventDefault();
+            const username = document.getElementById('admin-username').value;
+            const password = document.getElementById('admin-password').value;
+            if (username.toLowerCase() === 'admin' && password === '1234') {
+                currentUser = { name: '管理者', code: 'admin' };
+                loginView.classList.add('hidden');
+                mainView.classList.remove('hidden');
+                aiChatContainer.classList.remove('hidden');
+                updateUserProfile();
+                roleSwitcherContainer.classList.remove('hidden');
+                roleSwitcher.value = 'admin';
+                switchRole('admin');
+            } else {
+                const loginError = document.getElementById('login-error');
+                loginError.textContent = '管理者帳號或密碼錯誤。';
+                loginError.classList.remove('hidden');
+            }
+        }
+
+        function handleLogout() {
+            currentUser = null;
+            loginView.classList.remove('hidden');
+            mainView.classList.add('hidden');
+            aiChatContainer.classList.add('hidden');
+            showLoginTab('user');
+            document.getElementById('user-login-form').reset();
+            document.getElementById('admin-login-form').reset();
+        }
+        
+        function handleCourseSubmit(event) {
+            event.preventDefault();
+            const courseId = document.getElementById('course-id').value;
+            const course = courseId ? coursesDB.find(c => c.id === parseInt(courseId)) : {};
+
+            course.title = document.getElementById('course-title').value;
+            course.status = document.getElementById('course-status').value;
+            
+            const drawCountValue = document.getElementById('quiz-draw-count').value;
+            course.quizDrawCount = /^\d+$/.test(drawCountValue) ? parseInt(drawCountValue) : null;
+            
+            const videoFile = document.getElementById('course-video').files[0];
+            if (videoFile) course.videoUrl = URL.createObjectURL(videoFile);
+            const presentationFile = document.getElementById('course-presentation').files[0];
+            if (presentationFile) course.presentationUrl = URL.createObjectURL(presentationFile);
+
+            course.qa = [];
+            document.querySelectorAll('.qa-field').forEach(field => {
+                const q = field.querySelector('input[name="q"]').value;
+                const a = field.querySelector('textarea[name="a"]').value;
+                if (q && a) course.qa.push({ q, a });
+            });
+
+            course.quiz = [];
+            document.querySelectorAll('.quiz-question-field').forEach(field => {
+                const question = field.querySelector('input[name="question"]').value;
+                const options = Array.from(field.querySelectorAll('input[name^="option"]')).map(opt => opt.value);
+                const answer = parseInt(field.querySelector('input[name^="answer"]:checked')?.value);
+                if (question && options.every(opt => opt) && !isNaN(answer)) {
+                    course.quiz.push({ question, options, answer });
+                }
+            });
+
+            if (!courseId) {
+                course.id = Date.now();
+                course.progress = 0;
+                if (!course.qa) course.qa = [];
+                if (!course.quiz) course.quiz = [];
+                coursesDB.push(course);
+            }
+
+            renderAdminCoursesTable();
+            renderDashboardStats();
+            closeCourseModal();
+        }
+
+        function handleAddUser(event) {
+            event.preventDefault();
+            let newCode;
+            do {
+                newCode = String(Math.floor(1000 + Math.random() * 9000));
+            } while (usersDB.some(user => user.code === newCode));
+
+            usersDB.push({
+                id: Date.now(),
+                name: document.getElementById('new-username').value,
+                code: newCode,
+                completed: 0,
+                joinDate: new Date().toISOString().split('T')[0]
+            });
+            renderAdminUsersTable();
+            renderDashboardStats();
+            closeAddUserModal();
+        }
+
+        function handleQAExcelImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1 }); // Skip header row
+
+                    const qaManager = document.getElementById('qa-manager');
+                    qaManager.innerHTML = ''; 
+
+                    jsonData.forEach(row => {
+                        const question = row[1];
+                        const answer = row[2]; 
+                        if (question && answer) {
+                            addQAField(question, answer);
+                        }
+                    });
+                } catch (error) {
+                    console.error("Error reading Excel file:", error);
+                    alert("讀取 Excel 檔案失敗，請確認格式是否正確。");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            event.target.value = ''; 
+        }
+        
+        function updateUserProfile() {
+            if(currentUser) {
+                document.getElementById('user-profile-info').innerHTML = `<p class="text-sm font-medium text-gray-600">歡迎</p><p class="font-bold text-gray-800">${currentUser.name}</p>`;
+            }
+        }
+
+        let toastTimeout; 
+        function showToast(message) {
+            const toast = document.getElementById('toast-notification');
+            toast.querySelector('p').textContent = message;
+
+            clearTimeout(toastTimeout);
+            
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.remove('translate-x-[calc(100%+2rem)]');
+            }, 10);
+
+            toastTimeout = setTimeout(() => {
+                toast.classList.add('translate-x-[calc(100%+2rem)]');
+                 setTimeout(() => toast.classList.add('hidden'), 500);
+            }, 5000);
+        }
+        
+        // --- 視圖切換與 Modal 控制 ---
+        function switchRole(role) {
+            document.querySelector('#user-nav').classList.toggle('hidden', role === 'admin');
+            document.querySelector('#admin-nav').classList.toggle('hidden', role !== 'admin');
+            if (role === 'admin') {
+                showAdminView('admin-dashboard-view');
+            } else {
+                renderUserCourses();
+                showView('user-courses-view');
+            }
+        }
+
+        function showView(viewId) {
+            currentCourseId = null; // Reset course context when switching views
+            mainContentViews.forEach(view => view.classList.add('hidden'));
+            document.getElementById(viewId).classList.remove('hidden');
+        }
+
+        function showLearningTab(tabName) {
+            learningTabs.forEach(tab => tab.classList.toggle('active', tab.id === `tab-${tabName}`));
+            learningContents.forEach(content => content.classList.toggle('hidden', content.id !== `content-${tabName}`));
+        }
+
+        function showLearningView(courseId) {
+            currentCourseId = courseId;
+            const course = coursesDB.find(c => c.id === courseId);
+            if (!course) return;
+
+            document.getElementById('learning-course-title').textContent = course.title;
+            document.getElementById('learning-course-description').textContent = course.description;
+            
+            const videoPlayer = document.getElementById('video-player');
+            videoPlayer.src = course.videoUrl || '';
+            document.getElementById('no-video-message').classList.toggle('hidden', !!course.videoUrl);
+            
+            if (course.videoUrl && course.progress < 50) {
+                showToast('提醒：觀看影片後，才能解鎖課程測驗喔！');
+            }
+            
+            // Handle Presentation
+            const pdfViewerContainer = document.getElementById('pdf-viewer-container');
+            const noPresentationMessage = document.getElementById('no-presentation-message');
+            if (course.presentationUrl) {
+                pdfViewerContainer.classList.remove('hidden');
+                noPresentationMessage.classList.add('hidden');
+                
+                pdfjsLib.getDocument(course.presentationUrl).promise.then(pdf => {
+                    pdfDoc = pdf;
+                    document.getElementById('pdf-page-count').textContent = pdfDoc.numPages;
+                    pageNum = 1;
+                    renderPdfPage(pageNum);
+                });
+
+            } else {
+                pdfDoc = null; // 清除舊的PDF文件
+                pdfViewerContainer.classList.add('hidden');
+                noPresentationMessage.classList.remove('hidden');
+            }
+
+
+            videoPlayer.onended = () => {
+                if(course.progress < 50) course.progress = 50;
+                updateQuizTabLock(course);
+                renderUserCourses();
+            };
+
+            renderQuiz(course);
+            renderQA(course);
+            updateQuizTabLock(course);
+            
+            showView('user-learning-view');
+            showLearningTab('video');
+        }
+        
+        function updateQuizTabLock(course) {
+            const quizTab = document.getElementById('tab-quiz');
+            if (course.progress >= 50 || !course.videoUrl) {
+                quizTab.classList.remove('disabled');
+                quizTab.disabled = false;
+                quizTab.title = '';
+            } else {
+                quizTab.classList.add('disabled');
+                quizTab.disabled = true;
+                quizTab.title = '請先完成影片觀看';
+            }
+        }
+
+        function renderQuiz(course) {
+            const container = document.getElementById('quiz-container');
+            if (!course.quiz || course.quiz.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-500">本課程沒有測驗。</p>`;
+                return;
+            }
+
+            const totalQuestions = course.quiz.length;
+            const drawCount = course.quizDrawCount > 0 ? Math.min(course.quizDrawCount, totalQuestions) : totalQuestions;
+            
+            container.innerHTML = `
+                <div class="text-center">
+                    <h3 class="text-2xl font-bold mb-4">課程測驗</h3>
+                    <p class="text-gray-600 mb-2">題庫總數：${totalQuestions} 題</p>
+                    <p class="text-gray-600 mb-2">本次測驗將隨機抽取：<span class="font-bold text-indigo-600">${drawCount}</span> 題</p>
+                    <p class="text-gray-600 mb-6">及格分數：70%</p>
+                    <button onclick="startQuiz(${course.id})" class="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors">
+                        開始測驗
+                    </button>
+                </div>
+            `;
+        }
+        
+        function startQuiz(courseId) {
+            const course = coursesDB.find(c => c.id === courseId);
+            if (!course || !course.quiz || course.quiz.length === 0) return;
+            
+            const container = document.getElementById('quiz-container');
+            const drawCount = course.quizDrawCount > 0 ? Math.min(course.quizDrawCount, course.quiz.length) : course.quiz.length;
+            
+            currentQuizQuestions = [...course.quiz].sort(() => 0.5 - Math.random()).slice(0, drawCount);
+
+            let quizHTML = `<h3 class="text-2xl font-bold mb-6">測驗進行中... (共 ${currentQuizQuestions.length} 題)</h3><form id="quiz-form" onsubmit="handleQuizSubmit(event, ${course.id})">`;
+            currentQuizQuestions.forEach((q, index) => {
+                quizHTML += `<div class="mb-8 p-4 border-l-4 border-indigo-100"><p class="font-semibold text-gray-800 mb-3">${index + 1}. ${q.question}</p><div class="space-y-2">`;
+                q.options.forEach((opt, optIndex) => {
+                    quizHTML += `
+                        <label class="flex items-center p-3 rounded-lg hover:bg-indigo-50 cursor-pointer border border-gray-200">
+                            <input type="radio" name="q${index}" value="${optIndex}" required class="w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500">
+                            <span class="ml-3 text-gray-700">${opt}</span>
+                        </label>`;
+                });
+                quizHTML += `</div></div>`;
+            });
+            quizHTML += `<button type="submit" class="w-full mt-6 px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors">提交測驗</button></form><div id="quiz-result" class="mt-6"></div>`;
+            container.innerHTML = quizHTML;
+        }
+
+
+        function handleQuizSubmit(event, courseId) {
+            event.preventDefault();
+            const course = coursesDB.find(c => c.id === courseId);
+            const form = document.getElementById('quiz-form');
+            let score = 0;
+            currentQuizQuestions.forEach((q, index) => {
+                const userAnswer = form.querySelector(`input[name="q${index}"]:checked`)?.value;
+                if (parseInt(userAnswer) === q.answer) {
+                    score++;
+                }
+            });
+            const percentage = Math.round((score / currentQuizQuestions.length) * 100);
+            const resultDiv = document.getElementById('quiz-result');
+
+            form.querySelectorAll('input, button').forEach(el => el.disabled = true);
+            
+            let resultMessage = `<div class="p-6 rounded-lg text-center `;
+
+            if (percentage >= 70) {
+                course.progress = 100;
+                resultMessage += `bg-green-100 text-green-800"><h4 class="text-xl font-bold mb-2">恭喜通過！</h4><p class="text-2xl font-black">${percentage}%</p><p class="mt-2">課程已結業。</p>`;
+                renderUserCourses();
+            } else {
+                resultMessage += `bg-red-100 text-red-800"><h4 class="text-xl font-bold mb-2">未通過</h4><p class="text-2xl font-black">${percentage}%</p><p class="mt-2">未達 70% 通過標準，請再試一次。</p>`;
+            }
+
+            resultMessage += `<button onclick="renderQuiz(coursesDB.find(c => c.id === ${courseId}))" class="mt-4 px-6 py-2 bg-white text-gray-700 font-semibold border border-gray-300 rounded-lg hover:bg-gray-50">重新測驗</button></div>`;
+            resultDiv.innerHTML = resultMessage;
+        }
+
+        function renderQA(course) {
+            const container = document.getElementById('qa-container');
+             if (!course.qa || course.qa.length === 0) {
+                container.innerHTML = `<p class="text-gray-500">本課程沒有常見問答。</p>`;
+                return;
+            }
+            container.innerHTML = `<h3 class="text-2xl font-bold mb-6">常見問答</h3>` + course.qa.map(item => `
+                <details class="border rounded-lg">
+                    <summary class="p-4 cursor-pointer font-semibold flex justify-between items-center">
+                        ${item.q}
+                        <svg class="w-5 h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </summary>
+                    <p class="p-4 border-t bg-gray-50">${item.a}</p>
+                </details>
+            `).join('');
+        }
+
+
+        function showAdminView(viewId) {
+            currentCourseId = null; // Reset course context
+            mainContentViews.forEach(view => view.classList.add('hidden'));
+            document.getElementById(viewId).classList.remove('hidden');
+            document.querySelectorAll('#admin-nav .sidebar-link').forEach(link => {
+                link.classList.toggle('active', link.getAttribute('onclick').includes(viewId));
+            });
+            renderAdminCoursesTable();
+            renderAdminUsersTable();
+            renderDashboardStats();
+        }
+
+        function openAddCourseModal() {
+            document.getElementById('course-form').reset();
+            document.getElementById('course-id').value = '';
+            document.getElementById('course-modal-title').textContent = '新增課程';
+            document.getElementById('course-submit-btn').textContent = '儲存課程';
+            document.getElementById('qa-manager').innerHTML = '';
+            document.getElementById('quiz-manager').innerHTML = '';
+            courseModal.classList.remove('hidden');
+        }
+        
+        function openEditCourseModal(courseId) {
+            const course = coursesDB.find(c => c.id === courseId);
+            if (!course) return;
+            openAddCourseModal(); 
+            document.getElementById('course-id').value = course.id;
+            document.getElementById('course-title').value = course.title;
+            document.getElementById('course-status').value = course.status;
+            document.getElementById('quiz-draw-count').value = course.quizDrawCount || '';
+            document.getElementById('course-modal-title').textContent = '編輯課程';
+            document.getElementById('course-submit-btn').textContent = '更新課程';
+
+            (course.qa || []).forEach(qa => addQAField(qa.q, qa.a));
+            (course.quiz || []).forEach(q => addQuizQuestionField(q));
+        }
+
+        function closeCourseModal() { courseModal.classList.add('hidden'); }
+        function openAddUserModal() { addUserModal.classList.remove('hidden'); }
+        function closeAddUserModal() { addUserModal.classList.add('hidden'); document.getElementById('add-user-form').reset(); }
+
+        function addQAField(q = '', a = '') {
+            const container = document.getElementById('qa-manager');
+            const qaField = document.createElement('div');
+            qaField.className = 'qa-field p-3 border rounded-md relative';
+            qaField.innerHTML = `
+                <button type="button" onclick="this.parentElement.remove()" class="absolute top-1 right-1 text-red-500 font-bold">&times;</button>
+                <input type="text" name="q" placeholder="問題" class="w-full border-gray-300 rounded-md p-2" value="${q}">
+                <textarea name="a" placeholder="答案" class="w-full border-gray-300 rounded-md p-2 mt-2">${a}</textarea>
+            `;
+            container.appendChild(qaField);
+        }
+
+        function addQuizQuestionField(quizItem = null) {
+            const container = document.getElementById('quiz-manager');
+            const questionField = document.createElement('div');
+            const questionId = Date.now() + Math.random();
+            questionField.className = 'quiz-question-field p-4 border rounded-lg relative';
+            
+            let optionsHTML = '';
+            for(let i=0; i<4; i++) {
+                const optionValue = quizItem ? quizItem.options[i] : '';
+                const isChecked = quizItem && quizItem.answer === i;
+                optionsHTML += `
+                    <div class="flex items-center">
+                        <input type="radio" name="answer_${questionId}" value="${i}" ${isChecked ? 'checked' : ''} required class="mr-2">
+                        <input type="text" name="option${i}" placeholder="選項 ${i+1}" class="w-full border-gray-300 rounded-md p-2" value="${optionValue}">
+                    </div>
+                `;
+            }
+
+            questionField.innerHTML = `
+                <button type="button" onclick="this.parentElement.remove()" class="absolute top-2 right-2 text-red-500 font-bold">&times;</button>
+                <input type="text" name="question" placeholder="測驗問題" class="w-full border-gray-300 rounded-md p-2 mb-2" value="${quizItem ? quizItem.question : ''}">
+                <div class="space-y-2">${optionsHTML}</div>
+            `;
+            container.appendChild(questionField);
+        }
+        
+        // --- PDF.js Functions ---
+        function renderPdfPage(num) {
+            pageRendering = true;
+            pdfDoc.getPage(num).then(page => {
+                const viewport = page.getViewport({ scale: 1.5 });
+                pdfCanvas.height = viewport.height;
+                pdfCanvas.width = viewport.width;
+
+                const renderContext = {
+                    canvasContext: pdfCtx,
+                    viewport: viewport
+                };
+                const renderTask = page.render(renderContext);
+
+                renderTask.promise.then(() => {
+                    pageRendering = false;
+                    if (pageNumPending !== null) {
+                        renderPdfPage(pageNumPending);
+                        pageNumPending = null;
+                    }
+                });
+            });
+            document.getElementById('pdf-page-num').textContent = num;
+        }
+
+        function queuePdfRenderPage(num) {
+            if (pageRendering) {
+                pageNumPending = num;
+            } else {
+                renderPdfPage(num);
+            }
+        }
+
+        function onPrevPdfPage() {
+            if (pageNum <= 1) return;
+            pageNum--;
+            queuePdfRenderPage(pageNum);
+        }
+        document.getElementById('pdf-prev').addEventListener('click', onPrevPdfPage);
+
+        function onNextPdfPage() {
+            if (pageNum >= pdfDoc.numPages) return;
+            pageNum++;
+            queuePdfRenderPage(pageNum);
+        }
+        document.getElementById('pdf-next').addEventListener('click', onNextPdfPage);
+
+        // --- AI Chat Functions ---
+        function toggleChat() {
+            chatWindow.classList.toggle('open');
+        }
+
+        function appendMessage(role, text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${role}`;
+            messageDiv.textContent = text;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        async function callGeminiAPI(userQuery) {
+            if (!USER_API_KEY) {
+                return "AI 功能設定錯誤：請先在 HTML 檔案的 <script> 區塊中填入您的 API Key。";
+            }
+            const apiKey = USER_API_KEY;
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            let systemPrompt = "你是一個友善且專業的學習小幫手。請根據使用者提供的課程內容與問題，提供簡潔、清晰且有幫助的回答。";
+            
+            if(currentCourseId) {
+                const course = coursesDB.find(c => c.id === currentCourseId);
+                if (course) {
+                   systemPrompt += `\n\n目前使用者正在學習以下課程：\n課程名稱：${course.title}\n課程簡介：${course.description}`;
+                }
+            }
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            let response;
+            let retries = 3;
+            let delay = 1000;
+
+            while (retries > 0) {
+                try {
+                    response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        const candidate = result.candidates?.[0];
+                        if (candidate && candidate.content?.parts?.[0]?.text) {
+                            return candidate.content.parts[0].text;
+                        } else {
+                            // If the response is OK but the structure is wrong, maybe the API blocked the request.
+                            const errorResult = await result; // Try to get error details
+                            console.error("API response structure incorrect:", errorResult);
+                            return `抱歉，我的回答可能因為安全設定被阻擋了。(${response.status})`;
+                        }
+                    } else {
+                        // Handle non-OK responses (e.g., 400, 429, 500)
+                        const errorResult = await response.json();
+                        console.error(`API Error (${response.status}):`, errorResult);
+                        if (response.status === 429) {
+                            // Throttling
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            delay *= 2;
+                            retries--;
+                            continue; // Retry the request
+                        }
+                        return `抱歉，發生錯誤 (${response.status})，請確認您的 API Key 是否正確或稍後再試。`;
+                    }
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                }
+
+                retries--;
+                if (retries > 0) {
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2; // Exponential backoff
+                }
+            }
+            return "抱歉，我現在無法回答您的問題，請稍後再試。";
+        }
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userInput = chatInput.value.trim();
+            if (!userInput) return;
+
+            appendMessage('user', userInput);
+            chatInput.value = '';
+            chatForm.querySelector('button').disabled = true;
+            chatLoading.classList.remove('hidden');
+
+            const aiResponse = await callGeminiAPI(userInput);
+
+            appendMessage('assistant', aiResponse);
+            chatLoading.classList.add('hidden');
+            chatForm.querySelector('button').disabled = false;
+        });
+        
+        // Add initial welcome message to chat
+        appendMessage('assistant', '您好！我是您的 AI 學習小幫手，有什麼問題都可以問我喔！');
+
+    </script>
+</body>
+</html>
