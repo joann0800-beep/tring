@@ -687,7 +687,7 @@
             event.preventDefault();
             const username = document.getElementById('admin-username').value;
             const password = document.getElementById('admin-password').value;
-            if (username.toLowerCase() === 'admin' && password === '1234') {
+            if (username.toLowerCase() === 'admin' && password === 'admin') {
                 currentUser = { name: '管理者', code: 'admin' };
                 loginView.classList.add('hidden');
                 mainView.classList.remove('hidden');
