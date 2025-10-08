@@ -459,7 +459,7 @@
                     <div class="mt-4 space-x-2">
                         <button type="button" onclick="addQAField()" class="px-3 py-1.5 text-sm bg-gray-200 hover:bg-gray-300 rounded-md">手動新增問答</button>
                         <button type="button" onclick="document.getElementById('qa-excel-import').click()" class="px-3 py-1.5 text-sm bg-green-100 text-green-700 hover:bg-green-200 rounded-md">從 Excel 匯入</button>
-                        <input type="file" id="qa-excel-import" class="hidden" accept=".xlsx, .xls" onchange="handleQAExcelImport(event)">
+                        <input type="file" id="qa-excel-import" class="hidden" accept=".xlsx, .xls, .csv" onchange="handleQAExcelImport(event)">
                     </div>
                 </fieldset>
                 
@@ -512,7 +512,7 @@
         // 3. 點擊 "Create API key" 按鈕來產生一組免費的 API 金鑰。
         // 4. 將產生的金鑰複製，並貼到下面的引號之間。
         // 範例: const USER_API_KEY = "AIzaSy...YOUR_KEY_HERE...";
-        const USER_API_KEY = "AIzaSyBkQL8-TgWPsWU35fTAF7j6RXNOuIZNQy0"; // 
+        const USER_API_KEY = "AIzaSyBkQL8-TgWPsWU35fTAF7j6RXNOuIZNQy0"; //
 
         // --- 全域變數與 DOM 節點 ---
         const loginView = document.getElementById('login-view');
@@ -789,18 +789,20 @@
                     const workbook = XLSX.read(data, { type: 'array' });
                     const firstSheetName = workbook.SheetNames[0];
                     const worksheet = workbook.Sheets[firstSheetName];
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, range: 1 }); // Skip header row
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
                     const qaManager = document.getElementById('qa-manager');
                     qaManager.innerHTML = ''; 
 
-                    jsonData.forEach(row => {
-                        const question = row[1];
-                        const answer = row[2]; 
+                    // Skip the header row by starting loop from index 1
+                    for (let i = 1; i < jsonData.length; i++) {
+                        const row = jsonData[i];
+                        const question = row[0];
+                        const answer = row[1]; 
                         if (question && answer) {
                             addQAField(question, answer);
                         }
-                    });
+                    }
                 } catch (error) {
                     console.error("Error reading Excel file:", error);
                     alert("讀取 Excel 檔案失敗，請確認格式是否正確。");
@@ -1164,7 +1166,6 @@
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
             let systemPrompt = "你是一個友善且專業的學習小幫手。你的知識'嚴格'限制在使用者提供的課程問答集中。";
-            let hasQaContext = false;
             
             if(currentCourseId) {
                 const course = coursesDB.find(c => c.id === currentCourseId);
@@ -1173,7 +1174,6 @@
                     if (course.qa && course.qa.length > 0) {
                         const qaString = course.qa.map(item => `問：${item.q}\n答：${item.a}`).join('\n\n');
                         systemPrompt += `\n請嚴格根據以下的「問答集」來回答問題。如果問題的答案不在下方的問答集中，請'務必'只回答「抱歉，這個問題我無法從目前的資料中找到答案，建議您可以查閱課程簡報喔！」這句話，不要自己創造或延伸任何答案。\n\n---問答集---\n${qaString}`;
-                        hasQaContext = true;
                     } else {
                          systemPrompt += `\n這個課程目前沒有設定問答集。當使用者提問時，請回答「抱歉，這個課程尚未建立問答集資料，我無法回答您的問題喔！」`;
                     }
