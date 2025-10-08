@@ -439,6 +439,10 @@
                             <input type="text" id="course-title" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
                         </div>
                         <div>
+                            <label for="course-description" class="block text-sm font-medium text-gray-700">課程簡介</label>
+                            <textarea id="course-description" rows="4" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" placeholder="請在此輸入課程的詳細介紹或大綱，AI小幫手會根據這裡的內容來回答學員的問題。"></textarea>
+                        </div>
+                        <div>
                             <label for="course-video" class="block text-sm font-medium text-gray-700">上傳影片/音檔</label>
                             <input type="file" id="course-video" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
                         </div>
@@ -723,6 +727,7 @@
             const course = courseId ? coursesDB.find(c => c.id === parseInt(courseId)) : {};
 
             course.title = document.getElementById('course-title').value;
+            course.description = document.getElementById('course-description').value; // Save description
             course.status = document.getElementById('course-status').value;
             
             const drawCountValue = document.getElementById('quiz-draw-count').value;
@@ -753,6 +758,7 @@
             if (!courseId) {
                 course.id = Date.now();
                 course.progress = 0;
+                if (!course.description) course.description = '';
                 if (!course.qa) course.qa = [];
                 if (!course.quiz) course.quiz = [];
                 coursesDB.push(course);
@@ -867,7 +873,7 @@
             if (!course) return;
 
             document.getElementById('learning-course-title').textContent = course.title;
-            document.getElementById('learning-course-description').textContent = course.description;
+            document.getElementById('learning-course-description').textContent = course.description || '暫無簡介';
             
             const videoPlayer = document.getElementById('video-player');
             videoPlayer.src = course.videoUrl || '';
@@ -1050,6 +1056,7 @@
             openAddCourseModal(); 
             document.getElementById('course-id').value = course.id;
             document.getElementById('course-title').value = course.title;
+            document.getElementById('course-description').value = course.description || ''; // Load description
             document.getElementById('course-status').value = course.status;
             document.getElementById('quiz-draw-count').value = course.quizDrawCount || '';
             document.getElementById('course-modal-title').textContent = '編輯課程';
@@ -1172,8 +1179,8 @@
             
             if(currentCourseId) {
                 const course = coursesDB.find(c => c.id === currentCourseId);
-                if (course) {
-                   systemPrompt += `\n\n目前使用者正在學習以下課程：\n課程名稱：${course.title}\n課程簡介：${course.description}`;
+                if (course && course.description) {
+                   systemPrompt += `\n\n目前使用者正在學習以下課程，請根據這些資訊來回答：\n課程名稱：${course.title}\n課程簡介與重點：${course.description}`;
                 }
             }
 
@@ -1202,21 +1209,18 @@
                         if (candidate && candidate.content?.parts?.[0]?.text) {
                             return candidate.content.parts[0].text;
                         } else {
-                            // If the response is OK but the structure is wrong, maybe the API blocked the request.
-                            const errorResult = await result; // Try to get error details
+                            const errorResult = await result;
                             console.error("API response structure incorrect:", errorResult);
-                            return `抱歉，我的回答可能因為安全設定被阻擋了。(${response.status})`;
+                            return `抱歉，我的回答可能因為安全設定被阻擋了。`;
                         }
                     } else {
-                        // Handle non-OK responses (e.g., 400, 429, 500)
                         const errorResult = await response.json();
                         console.error(`API Error (${response.status}):`, errorResult);
                         if (response.status === 429) {
-                            // Throttling
                             await new Promise(resolve => setTimeout(resolve, delay));
                             delay *= 2;
                             retries--;
-                            continue; // Retry the request
+                            continue;
                         }
                         return `抱歉，發生錯誤 (${response.status})，請確認您的 API Key 是否正確或稍後再試。`;
                     }
@@ -1227,7 +1231,7 @@
                 retries--;
                 if (retries > 0) {
                     await new Promise(resolve => setTimeout(resolve, delay));
-                    delay *= 2; // Exponential backoff
+                    delay *= 2;
                 }
             }
             return "抱歉，我現在無法回答您的問題，請稍後再試。";
