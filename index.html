@@ -512,7 +512,7 @@
         // 3. 點擊 "Create API key" 按鈕來產生一組免費的 API 金鑰。
         // 4. 將產生的金鑰複製，並貼到下面的引號之間。
         // 範例: const USER_API_KEY = "AIzaSy...YOUR_KEY_HERE...";
-        const USER_API_KEY = "AIzaSyBkQL8-TgWPsWU35fTAF7j6RXNOuIZNQy0"; //
+        const USER_API_KEY = "AIzaSyBkQL8-TgWPsWU35fTAF7j6RXNOuIZNQy0"; // 
 
         // --- 全域變數與 DOM 節點 ---
         const loginView = document.getElementById('login-view');
@@ -794,8 +794,13 @@
                     const qaManager = document.getElementById('qa-manager');
                     qaManager.innerHTML = ''; 
 
-                    // Skip the header row by starting loop from index 1
-                    for (let i = 1; i < jsonData.length; i++) {
+                    // Skip the header row if it exists by checking the content
+                    let startRow = 0;
+                    if (jsonData[0] && jsonData[0][0] && jsonData[0][0].toLowerCase().includes('question')) {
+                        startRow = 1;
+                    }
+
+                    for (let i = startRow; i < jsonData.length; i++) {
                         const row = jsonData[i];
                         const question = row[0];
                         const answer = row[1]; 
@@ -860,6 +865,10 @@
         }
 
         function showLearningView(courseId) {
+            // 修正 AI 定位 Bug 的關鍵
+            mainContentViews.forEach(view => view.classList.add('hidden'));
+            document.getElementById('user-learning-view').classList.remove('hidden');
+            
             currentCourseId = courseId;
             const course = coursesDB.find(c => c.id === courseId);
             if (!course) return;
@@ -905,7 +914,6 @@
             renderQA(course);
             updateQuizTabLock(course);
             
-            showView('user-learning-view');
             showLearningTab('video');
         }
         
