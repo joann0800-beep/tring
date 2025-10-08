@@ -1164,7 +1164,7 @@
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
             let systemPrompt = "你是一個友善且專業的學習小幫手。你的知識'嚴格'限制在使用者提供的課程問答集中。";
-            let hasContext = false;
+            let hasQaContext = false;
             
             if(currentCourseId) {
                 const course = coursesDB.find(c => c.id === currentCourseId);
@@ -1173,13 +1173,13 @@
                     if (course.qa && course.qa.length > 0) {
                         const qaString = course.qa.map(item => `問：${item.q}\n答：${item.a}`).join('\n\n');
                         systemPrompt += `\n請嚴格根據以下的「問答集」來回答問題。如果問題的答案不在下方的問答集中，請'務必'只回答「抱歉，這個問題我無法從目前的資料中找到答案，建議您可以查閱課程簡報喔！」這句話，不要自己創造或延伸任何答案。\n\n---問答集---\n${qaString}`;
-                        hasContext = true;
+                        hasQaContext = true;
+                    } else {
+                         systemPrompt += `\n這個課程目前沒有設定問答集。當使用者提問時，請回答「抱歉，這個課程尚未建立問答集資料，我無法回答您的問題喔！」`;
                     }
                 }
-            }
-
-            if (!hasContext) {
-                 systemPrompt += "\n目前沒有可用的課程問答集。當使用者提問時，請回答「我需要您先進入有設定問答集的課程頁面，才能為您解答喔！」";
+            } else {
+                 systemPrompt += "\n目前不在任何課程頁面中。當使用者提問時，請回答「我需要您先進入有設定問答集的課程頁面，才能為您解答喔！」";
             }
 
 
