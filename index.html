@@ -513,7 +513,6 @@
         // 4. 將產生的金鑰複製，並貼到下面的引號之間。
         // 範例: const USER_API_KEY = "AIzaSy...YOUR_KEY_HERE...";
         const USER_API_KEY = "AIzaSyBkQL8-TgWPsWU35fTAF7j6RXNOuIZNQy0"; //
-
         // --- 全域變數與 DOM 節點 ---
         const loginView = document.getElementById('login-view');
         const mainView = document.getElementById('main-view');
@@ -554,7 +553,7 @@
 
         // --- 模擬資料庫 ---
         let coursesDB = [
-            { id: 1, title: 'AI 時代的專案管理', description: '學習如何運用 AI 工具提升專案效率。本課程將介紹敏捷開發、Scrum流程以及如何利用AI進行風險預測與任務自動化。', status: '已發佈', progress: 0, videoUrl: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4', presentationUrl: null, 
+            { id: 1, title: 'AI 時代的專案管理', status: '已發佈', progress: 0, videoUrl: 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4', presentationUrl: null, 
               qa: [
                   { q: '什麼是敏捷開發？', a: '敏捷開發是一種專案管理方法，強調快速迭代和客戶回饋。' },
                   { q: 'AI 如何幫助專案管理？', a: 'AI 可以自動化任務分配、預測專案風險、並提供數據洞察。' }
@@ -567,8 +566,8 @@
               ],
               quizDrawCount: 2
             },
-            { id: 2, title: '設計思考入門', description: '掌握以人為本的創新思考方法，包含同理心、定義、發想、原型製作與測試五個階段。', status: '已發佈', progress: 45, videoUrl: null, presentationUrl: null, qa: [], quiz: [], quizDrawCount: null },
-            { id: 3, title: '高效溝通的藝術', description: '建立正向人際關係的溝通技巧。', status: '草稿', progress: 0, videoUrl: null, presentationUrl: null, qa: [], quiz: [], quizDrawCount: null }
+            { id: 2, title: '設計思考入門', status: '已發佈', progress: 45, videoUrl: null, presentationUrl: null, qa: [], quiz: [], quizDrawCount: null },
+            { id: 3, title: '高效溝通的藝術', status: '草稿', progress: 0, videoUrl: null, presentationUrl: null, qa: [], quiz: [], quizDrawCount: null }
         ];
 
         let usersDB = [
@@ -749,7 +748,6 @@
             if (!courseId) {
                 course.id = Date.now();
                 course.progress = 0;
-                course.description = ''; // Initialize description for new courses
                 if (!course.qa) course.qa = [];
                 if (!course.quiz) course.quiz = [];
                 coursesDB.push(course);
@@ -1164,19 +1162,25 @@
             const apiKey = USER_API_KEY;
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
-            let systemPrompt = "你是一個友善且專業的學習小幫手。請根據使用者提供的課程內容與問題，提供簡潔、清晰且有幫助的回答。";
+            let systemPrompt = "你是一個友善且專業的學習小幫手。你的知識'嚴格'限制在使用者提供的課程問答集中。";
+            let hasContext = false;
             
             if(currentCourseId) {
                 const course = coursesDB.find(c => c.id === currentCourseId);
                 if (course) {
-                    let context = `\n\n目前使用者正在學習以下課程：\n課程名稱：${course.title}\n`;
+                    systemPrompt += `\n\n目前課程是「${course.title}」。`;
                     if (course.qa && course.qa.length > 0) {
                         const qaString = course.qa.map(item => `問：${item.q}\n答：${item.a}`).join('\n\n');
-                        context += `請根據以下問答集來回答相關問題：\n${qaString}`;
+                        systemPrompt += `\n請嚴格根據以下的「問答集」來回答問題。如果問題的答案不在下方的問答集中，請'務必'只回答「抱歉，這個問題我無法從目前的資料中找到答案，建議您可以查閱課程簡報喔！」這句話，不要自己創造或延伸任何答案。\n\n---問答集---\n${qaString}`;
+                        hasContext = true;
                     }
-                    systemPrompt += context;
                 }
             }
+
+            if (!hasContext) {
+                 systemPrompt += "\n目前沒有可用的課程問答集。當使用者提問時，請回答「我需要您先進入有設定問答集的課程頁面，才能為您解答喔！」";
+            }
+
 
             const payload = {
                 contents: [{ parts: [{ text: userQuery }] }],
